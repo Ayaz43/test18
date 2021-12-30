@@ -1,0 +1,25 @@
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/**'
+
+jobs:
+  build:
+    name: Build, push, and deploy
+    runs-on: ubuntu-latest
+    steps:
+    - name: use node.js 
+      uses: actions/checkout@v2
+      with:
+        node-version-file: '.nvmrc'
+        registry-url: https://registry.npmjs.org/
+
+    - name: Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ secrets.DIGITAL_OCEAN_ACCESS_TOKEN }}
+
+    - name: Deploy to DigitalOcean Kubernetes
+      run: doctl apps create --spec  $GITHUB_WORKSPACE/config/spec.yaml --wait

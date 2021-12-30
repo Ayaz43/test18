@@ -1,0 +1,82 @@
+name: "provision stack build/ deploy to Digital Ocean"
+env:
+    REPO_NAME: "${GITHUB_REPOSITORY}"
+on:
+  workflow_dispatch:
+    inputs:
+      NODE_VERSION:
+        required: true
+        description: 'nodejs version to be used'
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    environment:
+       name: development
+       url: ${{ steps.get-url.outputs.your_site }}
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+          
+      - name: use node.js ${{ github.event.inputs.NODE_VERSION }} 
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ github.event.inputs.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org/
+
+      - name: stacks framework code generation
+        run: |
+          npx create-next-app nextjs-scaffold --use-npm --example "https://github.com/vercel/next-learn/tree/master/basics/learn-starter"
+          cp -r nextjs-scaffold/* .
+          rm -rf nextjs-scaffold
+          echo ${{ github.event.inputs.NODE_VERSION }} > .nmvrc
+          
+      - name: Configure git
+        run: |
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          git config --global user.name "${{ github.actor }}"
+          git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
+      - name: Commit generated code and initialize workflows
+        run: |
+          git add .
+          git commit -m "Generate framework code and initialize workflows"
+          git push origin -u main
+
+      - name: build
+        run: |
+          npm install
+          npm run build 
+          npm run env -- next export -o build
+      
+      - name: Display file
+        run: |
+            cat config/spec.yaml
+          
+      - name: Find and Replace
+        uses: jacobtomlinson/gha-find-replace@2.0.0
+        with:
+          find: "<CURRENT_REPOSITORY_NAME>"
+          replace: "${GITHUB_REPOSITORY}"
+          include: "**spec.yaml"
+          
+      - name: Display file
+        run: |
+            cat config/spec.yaml
+            sed -i 's/<CURRENT_REPOSITORY_NAME>/${GITHUB_REPOSITORY}/g' config/spec.yaml
+            cat config/spec.yaml
+            echo ${GITHUB_REPOSITORY}
+            echo $GITHUB_REPOSITORY
+            echo "${GITHUB_REPOSITORY}"
+            echo $REPO_NAME
+          
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITAL_OCEAN_ACCESS_TOKEN }}
+
+      - name: Deploy to DigitalOcean Kubernetes
+        run: doctl apps create --spec config/spec.yaml --wait
